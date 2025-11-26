@@ -1,0 +1,3 @@
+[submodule "libs/sf2cute"]
+	path = libs/sf2cute
+	url = https://github.com/gocha/sf2cute

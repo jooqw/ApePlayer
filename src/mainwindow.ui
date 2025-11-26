@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1024</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Ape Player</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout" stretch="2,3">
+    <item>
+     <widget class="QTableWidget" name="tableWidget">
+      <property name="selectionBehavior">
+       <enum>QAbstractItemView::SelectRows</enum>
+      </property>
+      <column>
+       <property name="text"><string>ID</string></property>
+      </column>
+      <column>
+       <property name="text"><string>Part</string></property>
+      </column>
+      <column>
+       <property name="text"><string>Offset</string></property>
+      </column>
+      <column>
+       <property name="text"><string>Root</string></property>
+      </column>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="frame">
+      <layout class="QVBoxLayout" name="verticalLayout">
+       <item>
+        <widget class="QWidget" name="waveformWidgetContainer" native="true">
+         <layout class="QVBoxLayout" name="waveformLayout"/>
+         <property name="minimumSize">
+          <size><width>0</width><height>150</height></size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="grpControls">
+         <property name="title"><string>Playback</string></property>
+         <layout class="QGridLayout" name="gridLayout">
+          <item row="0" column="0">
+           <widget class="QPushButton" name="btnPlay"><property name="text"><string>▶ Play</string></property></widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QPushButton" name="btnStop"><property name="text"><string>⏹ Stop</string></property></widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QCheckBox" name="chkLoop"><property name="text"><string>Loop</string></property></widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblPan"><property name="text"><string>Pan</string></property></widget>
+          </item>
+          <item row="1" column="1" colspan="2">
+           <widget class="QSlider" name="sliderPan">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="minimum"><number>-100</number></property>
+            <property name="maximum"><number>100</number></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="grpData">
+         <property name="title"><string>Instrument Data</string></property>
+         <layout class="QFormLayout" name="formLayout">
+
+          <item row="0" column="0">
+           <widget class="QLabel" name="l1"><property name="text"><string>Offset:</string></property></widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="le_vagOffset"><property name="readOnly"><bool>true</bool></property></widget>
+          </item>
+
+          <item row="1" column="0">
+           <widget class="QLabel" name="l2"><property name="text"><string>Root Key:</string></property></widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="le_rootKey"><property name="readOnly"><bool>true</bool></property></widget>
+          </item>
+
+          <item row="2" column="0">
+           <widget class="QLabel" name="l3"><property name="text"><string>Volume:</string></property></widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="le_volume"><property name="readOnly"><bool>true</bool></property></widget>
+          </item>
+
+          <item row="3" column="0">
+           <widget class="QLabel" name="lRev"><property name="text"><string>Reverb:</string></property></widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="le_reverb"><property name="readOnly"><bool>true</bool></property></widget>
+          </item>
+
+          <item row="4" column="0">
+           <widget class="QLabel" name="l4"><property name="text"><string>ADSR (Raw):</string></property></widget>
+          </item>
+          <item row="4" column="1">
+           <layout class="QHBoxLayout" name="adsrLayout">
+            <item><widget class="QLineEdit" name="le_env_att">
+              <property name="placeholderText"><string>Att</string></property>
+              <property name="readOnly"><bool>true</bool></property>
+              </widget></item>
+            <item><widget class="QLineEdit" name="le_env_sl">
+              <property name="placeholderText"><string>SL</string></property>
+              <property name="readOnly"><bool>true</bool></property>
+              </widget></item>
+            <item><widget class="QLineEdit" name="le_env_sr_rr">
+              <property name="placeholderText"><string>SR/RR</string></property>
+              <property name="readOnly"><bool>true</bool></property>
+              </widget></item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect><x>0</x><y>0</y><width>1024</width><height>22</height></rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title"><string>File</string></property>
+    <addaction name="actionOpen_HD"/>
+    <addaction name="actionClose"/>
+   </widget>
+   <widget class="QMenu" name="menuConvert">
+    <property name="title"><string>Convert</string></property>
+    <addaction name="actionExportSF2"/>
+    <addaction name="separator"/>
+    <addaction name="actionBulkExport"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuConvert"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionOpen_HD"><property name="text"><string>Open .HD File</string></property></action>
+  <action name="actionClose"><property name="text"><string>Close</string></property></action>
+  <action name="actionExportSF2"><property name="text"><string>Export SF2</string></property></action>
+  <action name="actionBulkExport"><property name="text"><string>Bulk Export Folder (HD + MIDI)</string></property></action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
