@@ -1,2 +1,7 @@
 # ApePlayer
-Ape Escape 3 .BD/HD to SF2 converter
+Ape Escape .BD/HD to SF2 converter
+
+## TODO list:
+- fix pitch shifting
+- fix ADSR
+- add SFX check
