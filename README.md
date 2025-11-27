@@ -5,3 +5,4 @@ Ape Escape .BD/HD to SF2 converter
 - fix pitch shifting
 - fix ADSR
 - add SFX check
+- improve basically everything
