@@ -3,44 +3,96 @@
 
 #include <cstdint>
 #include <vector>
+#include <cmath>
+#include <string>
+#include <memory>
 
-#pragma pack(push, 1)
+using u8 = uint8_t;
+using s8 = int8_t;
+using u16 = uint16_t;
+using s16 = int16_t;
+using u32 = uint32_t;
+using s32 = int32_t;
 
-struct ApeInstrumentPart {
-    uint8_t key_min;        // 0x00
-    uint8_t key_max;        // 0x01
-    uint8_t key_root;       // 0x02
-    int8_t  cents;          // 0x03
-    uint16_t offset;        // 0x04-0x05
-    uint8_t env_sustain_lvl;// 0x06
-    uint8_t env_attack;     // 0x07
-
-    uint16_t env_release_sustain;
-
-    uint8_t  unk_0A;        // Padding?
-    uint8_t vol;            // 0x0B
-    uint8_t pan;            // 0x0C
-    uint8_t unk_0D;         // Unknown
-    uint8_t unk_0E;         // Unknown
-    uint8_t reverb;         // 0x0F (0x80+ = On)
+struct DecodedSample {
+    std::vector<s16> pcm;
+    int loop_start = 0;
+    int loop_end = 0;
+    bool looping = false;
 };
 
-struct ApePatchHeader {
-    uint8_t unk1;
-    uint8_t vol;
-    uint8_t header[4];
-    uint8_t startkey;
-    uint8_t unk2;
-};
-#pragma pack(pop)
+struct Tone {
+    u8 min_note;
+    u8 max_note;
+    u8 root_key;
+    s8 pitch_fine;
+    u32 bd_offset;
+    u16 adsr1;
+    u16 adsr2;
+    u8 vol;
+    u8 pan;
+    u8 pitch_mult;
+    u8 breath_idx;
+    u8 flags;
 
-struct VagResult {
-    std::vector<int16_t> pcm;
-    int loopStartSample = 0;
-    int loopEndSample = 0;
-    bool loopEnabled = false;
+    bool is_high_priority() const { return (flags & 0x01) != 0; }
+    bool is_noise() const { return (flags & 0x02) != 0; }
+    bool use_prog_pitch() const { return (flags & 0x10) != 0; }
+    bool use_modulation() const { return (flags & 0x20) != 0; }
+    bool use_prog_breath() const { return (flags & 0x40) != 0; }
+    bool is_reverb() const { return (flags & 0x80) != 0; }
 };
 
-static const int GEN_FREQ = 43000;
+struct Program {
+    int id;
+    u8 type;
+    u8 master_vol;
+    u8 master_pan;
+    u8 pitch_mult;
+    u8 breath_idx;
+    std::vector<Tone> tones;
+};
+
+struct SQChannelInit {
+    u8 prog_idx;
+    u8 vol;
+    u8 pan;
+    u8 modulation;
+    u8 pitch_bend;
+    u8 vibrato;
+};
+
+namespace Util {
+    inline s16 clamp16(int val) {
+        if (val < -32768) return -32768;
+        if (val > 32767) return 32767;
+        return (s16)val;
+    }
+    inline int clamp_pan(int val) {
+        if (val < 0) return 0;
+        if (val > 127) return 127;
+        return val;
+    }
+    inline u16 readU16(const std::vector<u8>& data, size_t offset) {
+        if (offset + 2 > data.size()) return 0;
+        return data[offset] | (data[offset + 1] << 8);
+    }
+    inline u32 readU32(const std::vector<u8>& data, size_t offset) {
+        if (offset + 4 > data.size()) return 0;
+        return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
+    }
+    inline u32 readU32BE(const std::vector<u8>& data, size_t offset) {
+        if (offset + 4 > data.size()) return 0;
+        return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+    }
+    inline u16 readU16BE(const std::vector<u8>& data, size_t offset) {
+        if (offset + 2 > data.size()) return 0;
+        return (data[offset] << 8) | data[offset + 1];
+    }
+    inline s8 readS8(const std::vector<u8>& data, size_t offset) {
+        if (offset + 1 > data.size()) return 0;
+        return (s8)data[offset];
+    }
+}
 
 #endif // COMMON_H

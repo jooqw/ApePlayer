@@ -1,10 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "apeloader.h"
-#include "vagdecoder.h"
-#include "sf2exporter.h"
-#include "vagaudiosource.h"
 #include "waveformwidget.h"
+#include "sf2exporter.h"
+#include "engine.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -14,29 +12,84 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QDebug>
+#include <QTimer>
+#include <QScrollBar>
+#include <algorithm>
+
+RawAudioSource::RawAudioSource(const std::vector<int16_t>& data, QObject* parent)
+: QIODevice(parent), m_pos(0), m_loop(false), m_ls(0), m_le(0)
+{
+    m_buffer = QByteArray((const char*)data.data(), data.size() * sizeof(int16_t));
+    m_le = m_buffer.size();
+}
+
+qint64 RawAudioSource::readData(char *data, qint64 maxlen) {
+    qint64 totalRead = 0;
+    maxlen = maxlen & ~1;
+
+    while (totalRead < maxlen) {
+        qint64 endOfData = m_loop ? m_le : m_buffer.size();
+        qint64 chunk = std::min(maxlen - totalRead, endOfData - m_pos);
+
+        if (chunk <= 0) {
+            if (m_loop) {
+                m_pos = m_ls;
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        memcpy(data + totalRead, m_buffer.constData() + m_pos, chunk);
+        m_pos += chunk;
+        totalRead += chunk;
+    }
+    return totalRead;
+}
+
+qint64 RawAudioSource::bytesAvailable() const {
+    if (m_loop) return m_buffer.size();
+    return m_buffer.size() - m_pos;
+}
 
 MainWindow::MainWindow(QWidget *parent)
-: QMainWindow(parent), ui(new Ui::MainWindow), m_loader(std::make_unique<ApeLoader>())
+: QMainWindow(parent), ui(new Ui::MainWindow), m_hd(std::make_unique<HDParser>()), m_bd(std::make_unique<BDParser>())
 {
     ui->setupUi(this);
 
     m_waveform = new WaveformWidget(this);
     ui->waveformLayout->addWidget(m_waveform);
-    ui->tableWidget->setColumnWidth(0, 60);
+
+    ui->splitter->setStretchFactor(0, 3);
+    ui->splitter->setStretchFactor(1, 2);
 
     connect(ui->actionOpen_HD, &QAction::triggered, this, &MainWindow::onOpenHd);
-    connect(ui->actionClose, &QAction::triggered, this, &MainWindow::onCloseFile);
-
     connect(ui->actionExportSF2, &QAction::triggered, this, &MainWindow::onExportSf2);
-    connect(ui->actionBulkExport, &QAction::triggered, this, &MainWindow::onBulkExport); // Bulk Connection
+    connect(ui->actionClose, &QAction::triggered, this, &MainWindow::onCloseFile);
 
     connect(ui->btnPlay, &QPushButton::clicked, this, &MainWindow::onPlayClicked);
     connect(ui->btnStop, &QPushButton::clicked, this, &MainWindow::onStopClicked);
     connect(ui->chkLoop, &QCheckBox::toggled, this, &MainWindow::onLoopToggled);
-    connect(ui->sliderPan, &QSlider::valueChanged, this, &MainWindow::onPanChanged);
 
     connect(ui->tableWidget, &QTableWidget::itemSelectionChanged, this, &MainWindow::onTableSelectionChanged);
     connect(ui->tableWidget, &QTableWidget::cellDoubleClicked, this, &MainWindow::onPlayClicked);
+
+    connect(ui->btnBrowseSq, &QToolButton::clicked, [this](){
+        QString path = QFileDialog::getOpenFileName(this, "Open SQ/MIDI", "", "Sequence (*.sq *.mid *.MID)");
+        if(!path.isEmpty()) ui->le_sqPath->setText(path);
+    });
+
+        connect(ui->btnRenderWav, &QPushButton::clicked, this, &MainWindow::onRenderWav);
+        connect(ui->btnBulk, &QPushButton::clicked, this, &MainWindow::onBulkExport);
+
+        QTimer::singleShot(500, this, [this](){
+            QMessageBox::information(this, "Welcome",
+                                     "This program supports loading .HD/.BD/.SQ files\n\n"
+                                     "IT'S NOT ACCURATE!! Contribute if you feel to.\n"
+                                     "List of things that needs fix:\n"
+                                     " - Vibrato\n"
+                                     " - Panning etc...");
+        });
 }
 
 MainWindow::~MainWindow() {
@@ -44,211 +97,221 @@ MainWindow::~MainWindow() {
     delete ui;
 }
 
-void MainWindow::onPanChanged(int val) {
-    ui->lblPan->setText(QString("Pan: %1").arg(val));
+void MainWindow::log(const QString& msg) {
+    ui->logOutput->appendPlainText(msg);
+    ui->logOutput->verticalScrollBar()->setValue(ui->logOutput->verticalScrollBar()->maximum());
 }
 
 void MainWindow::onOpenHd() {
-    QString path = QFileDialog::getOpenFileName(this, "Open", "", "HD (*.hd)");
+    QString path = QFileDialog::getOpenFileName(this, "Open HD", "", "HD Files (*.hd *.HD)");
     if(path.isEmpty()) return;
 
-    if(!m_loader->loadFiles(path)) {
-        if(QMessageBox::question(this, "BD Missing", "Find BD manually?", QMessageBox::Yes|QMessageBox::No) == QMessageBox::Yes) {
-            QString bd = QFileDialog::getOpenFileName(this, "Open BD", "", "BD (*.bd)");
-            if(!m_loader->loadFiles(path, bd)) return;
-        } else return;
-    }
-    fillTable();
-    ui->statusbar->showMessage("Loaded: " + QFileInfo(path).fileName());
-}
+    log("Loading HD: " + path);
 
-void MainWindow::onCloseFile() {
-    stopAudio();
-    m_loader->clear();
-    m_waveform->clear();
-    resetUi();
-    ui->statusbar->showMessage("Closed.");
-}
-
-void MainWindow::onExportSf2() {
-    if(m_loader->getInstruments().empty()) {
-        QMessageBox::warning(this, "Error", "Load a file first.");
+    if(!m_hd->load(path.toStdString())) {
+        QMessageBox::critical(this, "Error", "Failed to load HD file.");
+        log("Error: HD load failed.");
         return;
     }
-    QString path = QFileDialog::getSaveFileName(this, "Save SF2", "out.sf2", "SF2 (*.sf2)");
-    if(path.isEmpty()) return;
 
-    ui->statusbar->showMessage("Exporting...");
+    QFileInfo fi(path);
+    QString base = fi.absolutePath() + "/" + fi.completeBaseName();
+    QString bdPath;
+
+    if(QFile::exists(base + ".bd")) bdPath = base + ".bd";
+    else if(QFile::exists(base + ".BD")) bdPath = base + ".BD";
+
+    if(bdPath.isEmpty() || !m_bd->load(bdPath.toStdString())) {
+        bdPath = QFileDialog::getOpenFileName(this, "Locate BD", fi.absolutePath(), "BD Files (*.bd *.BD)");
+        if(bdPath.isEmpty() || !m_bd->load(bdPath.toStdString())) {
+            log("Warning: No BD loaded.");
+            QMessageBox::warning(this, "Warning", "No BD loaded. Playback disabled.");
+        } else {
+            log("Loaded BD: " + bdPath);
+        }
+    } else {
+        log("Loaded BD: " + bdPath);
+    }
+
+    fillTable();
+    ui->statusbar->showMessage("Loaded: " + fi.fileName());
+}
+
+void MainWindow::onRenderWav() {
+    if(m_hd->programs.empty() || m_bd->data.empty()) {
+        log("Error: HD/BD not loaded.");
+        QMessageBox::warning(this, "Error", "Please load an HD and BD file first.");
+        return;
+    }
+    QString sqPath = ui->le_sqPath->text();
+    if(sqPath.isEmpty()) {
+        log("Error: No Sequence file selected.");
+        QMessageBox::warning(this, "Error", "Please select a SQ or MIDI file.");
+        return;
+    }
+
+    QString wavPath = QFileDialog::getSaveFileName(this, "Save WAV", "", "WAV Files (*.wav)");
+    if(wavPath.isEmpty()) return;
+
+    log("Starting WAV Render...");
+    log("Sequence: " + sqPath);
+    log("Output: " + wavPath);
+
+    ui->btnRenderWav->setEnabled(false);
+    ui->progressBar->setRange(0, 0);
     QApplication::processEvents();
 
-    if(Sf2Exporter::exportToSf2(path, m_loader.get())) {
-        QMessageBox::information(this, "OK", "Exported successfully.");
-        ui->statusbar->showMessage("Saved: " + path);
+    bool isMidi = sqPath.endsWith(".mid", Qt::CaseInsensitive) || sqPath.endsWith(".midi", Qt::CaseInsensitive);
+
+    bool ok = ExportSequenceToWav(sqPath.toStdString(), wavPath.toStdString(), m_hd.get(), m_bd.get(), ui->chkReverb->isChecked(), isMidi);
+
+    ui->btnRenderWav->setEnabled(true);
+    ui->progressBar->setRange(0, 100);
+    ui->progressBar->setValue(100);
+
+    if(ok) {
+        log("WAV Render Successful.");
+        QMessageBox::information(this, "Success", "WAV Rendered successfully!");
     } else {
-        QMessageBox::critical(this, "Error", "Export Failed.");
+        log("WAV Render Failed.");
+        QMessageBox::critical(this, "Error", "Rendering failed.");
     }
 }
 
 void MainWindow::onBulkExport() {
-    QString inputPath = QFileDialog::getExistingDirectory(this, "Select Folder with sequenced data(.HD/.BD/.MID)");
-    if (inputPath.isEmpty()) return;
+    QString inDir = QFileDialog::getExistingDirectory(this, "Input Folder (HD files)");
+    if(inDir.isEmpty()) return;
+    QString outDir = QFileDialog::getExistingDirectory(this, "Output Folder");
+    if(outDir.isEmpty()) return;
 
-    QString outputPath = QFileDialog::getExistingDirectory(this, "Select Output Folder for SF2s");
-    if (outputPath.isEmpty()) return;
+    QDir dir(inDir);
+    QStringList filters; filters << "*.hd" << "*.HD";
+    QFileInfoList hdFiles = dir.entryInfoList(filters, QDir::Files);
 
-    QDir inDir(inputPath);
-    QDir outDir(outputPath);
-
-    QStringList filters;
-    filters << "*.hd" << "*.HD";
-    QFileInfoList hdFiles = inDir.entryInfoList(filters, QDir::Files);
-
-    if (hdFiles.empty()) {
-        QMessageBox::information(this, "Info", "No .HD files found in input directory.");
+    if(hdFiles.empty()) {
+        log("No .hd files found in directory.");
         return;
     }
 
-    int successCount = 0;
-    int errorCount = 0;
-    int total = hdFiles.size();
+    log("Starting Bulk Export on " + QString::number(hdFiles.size()) + " files...");
 
-    for (int i = 0; i < total; ++i) {
-        QFileInfo hdInfo = hdFiles[i];
-        QString baseName = hdInfo.completeBaseName();
+    ui->progressBar->setRange(0, hdFiles.size());
+    ui->progressBar->setValue(0);
 
-        ui->statusbar->showMessage(QString("Bulk Exporting (%1/%2): %3...").arg(i+1).arg(total).arg(baseName));
-        QApplication::processEvents();
+    int count = 0;
+    int index = 0;
 
-        // Use a temporary loader to keep main UI state clean
-        ApeLoader tempLoader;
+    for(const QFileInfo& info : hdFiles) {
+        log("Processing: " + info.fileName());
 
-        // Load HD
-        if (!tempLoader.loadFiles(hdInfo.absoluteFilePath())) {
-            qDebug() << "Skipping" << baseName << "- Failed to load HD/BD pair.";
-            errorCount++;
+        HDParser thd;
+        BDParser tbd;
+
+        if(!thd.load(info.absoluteFilePath().toStdString())) {
+            log("  -> Failed to load HD.");
+            index++;
+            ui->progressBar->setValue(index);
             continue;
         }
 
-        if (tempLoader.getInstruments().empty()) {
-            errorCount++;
-            continue;
+        QString base = info.absolutePath() + "/" + info.completeBaseName();
+        if(!tbd.load((base + ".bd").toStdString())) {
+            tbd.load((base + ".BD").toStdString());
         }
 
-        // Export SF2
-        QString sf2Path = outDir.filePath(baseName + ".sf2");
-        if (!Sf2Exporter::exportToSf2(sf2Path, &tempLoader)) {
-            qDebug() << "Failed to write SF2 for" << baseName;
-            errorCount++;
-            continue;
-        }
-
-        // Copy .mid file
-        // some programs auto search for midi files with the same name
-        // as the soundfont.
-        QString midiSrcPath;
-        QDirIterator it(inDir.absolutePath(), QStringList() << "*.mid" << "*.MID", QDir::Files);
-        while (it.hasNext()) {
-            it.next();
-            if (it.fileInfo().completeBaseName().compare(baseName, Qt::CaseInsensitive) == 0) {
-                midiSrcPath = it.filePath();
-                break;
+        if(!tbd.data.empty()) {
+            QString sf2Name = outDir + "/" + info.completeBaseName() + ".sf2";
+            if(Sf2Exporter::exportToSf2(sf2Name, &thd, &tbd)) {
+                log("  -> Exported SF2.");
+                count++;
+            } else {
+                log("  -> SF2 Export failed.");
             }
+
+            QString destMid = outDir + "/" + info.completeBaseName() + ".mid";
+
+            QString midSource = base + ".mid";
+            if (!QFile::exists(midSource)) midSource = base + ".MID";
+
+            if (QFile::exists(midSource)) {
+                if (QFile::exists(destMid)) QFile::remove(destMid);
+                QFile::copy(midSource, destMid);
+                log("  -> Copied existing MIDI.");
+            } else {
+                QString sqPath = base + ".sq";
+                if(!QFile::exists(sqPath)) sqPath = base + ".SQ";
+
+                if(QFile::exists(sqPath)) {
+                    SQParser sq;
+                    if(sq.load(sqPath.toStdString())) {
+                        sq.saveToMidi(destMid.toStdString());
+                        log("  -> Converted SQ to MIDI.");
+                    }
+                }
+            }
+        } else {
+            log("  -> BD file missing.");
         }
 
-        if (!midiSrcPath.isEmpty()) {
-            QString midiDestPath = outDir.filePath(baseName + ".mid");
-            if (QFile::exists(midiDestPath)) QFile::remove(midiDestPath);
-            QFile::copy(midiSrcPath, midiDestPath);
+        index++;
+        ui->progressBar->setValue(index);
+        QApplication::processEvents();
+    }
+
+    log("Bulk Export Finished. Processed: " + QString::number(count));
+    QMessageBox::information(this, "Done", QString("Processed %1 files.").arg(count));
+}
+
+void MainWindow::fillTable() {
+    ui->tableWidget->setRowCount(0);
+    ui->tableWidget->setSortingEnabled(false);
+
+    for(const auto& p : m_hd->programs) {
+        if(!p) continue;
+        for(size_t i=0; i<p->tones.size(); ++i) {
+            int r = ui->tableWidget->rowCount();
+            ui->tableWidget->insertRow(r);
+
+            auto* idItem = new QTableWidgetItem(QString::number(p->id));
+            idItem->setData(Qt::UserRole, p->id);
+            idItem->setData(Qt::UserRole+1, (int)i);
+
+            ui->tableWidget->setItem(r, 0, idItem);
+            ui->tableWidget->setItem(r, 1, new QTableWidgetItem(QString::number(p->type)));
+            ui->tableWidget->setItem(r, 2, new QTableWidgetItem(QString("0x%1").arg(QString::number(p->tones[i].bd_offset, 16).toUpper())));
+            ui->tableWidget->setItem(r, 3, new QTableWidgetItem(QString("%1 - %2").arg(p->tones[i].min_note).arg(p->tones[i].max_note)));
         }
-
-        successCount++;
     }
-
-    ui->statusbar->showMessage("Bulk Export Finished.");
-    QMessageBox::information(this, "Done",
-                             QString("Processed: %1/%2 files.\nSuccess: %3\nErrors/Skipped: %4")
-                             .arg(successCount + errorCount).arg(total).arg(successCount).arg(errorCount));
-}
-
-void MainWindow::stopAudio() {
-    if(m_sink) {
-        m_sink->stop();
-        delete m_sink;
-        m_sink=nullptr;
-    }
-    if(m_source) {
-        m_source->close();
-        delete m_source;
-        m_source=nullptr;
-    }
-}
-
-void MainWindow::playSample(int i, int j) {
-    stopAudio();
-
-    uint16_t offset = m_loader->getInstruments()[i].parts[j].offset;
-    auto vag = m_loader->extractVagSample(offset);
-    if(vag.empty()) return;
-
-    // Decode (Now stops correctly at flag)
-    auto res = VagDecoder::decode(vag);
-
-    // Stereo Expansion
-    float pan = ui->sliderPan->value()/100.0f;
-    float lG = (1.0f - pan)/2.0f + 0.5f;
-    float rG = (pan + 1.0f)/2.0f;
-
-    std::vector<int16_t> stereo;
-    stereo.reserve(res.pcm.size()*2);
-    for(auto s : res.pcm) {
-        stereo.push_back((int16_t)(s * lG));
-        stereo.push_back((int16_t)(s * rG));
-    }
-
-    m_source = new VagAudioSource(stereo, res.loopStartSample, res.loopEndSample, this);
-    m_source->open(QIODevice::ReadOnly);
-
-    ui->chkLoop->blockSignals(true);
-    ui->chkLoop->setChecked(res.loopEnabled);
-    ui->chkLoop->blockSignals(false);
-
-    m_source->setLooping(res.loopEnabled);
-
-    QAudioFormat fmt;
-    fmt.setSampleRate(GEN_FREQ);
-    fmt.setChannelCount(2);
-    fmt.setSampleFormat(QAudioFormat::Int16);
-
-    m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), fmt, this);
-    m_sink->start(m_source);
-}
-
-void MainWindow::previewSample(int i, int j) {
-    const auto& p = m_loader->getInstruments()[i].parts[j];
-
-    ui->le_vagOffset->setText(QString::number(p.offset));
-    ui->le_rootKey->setText(QString::number(p.key_root));
-    ui->le_volume->setText(QString::number(p.vol));
-    ui->sliderPan->setValue(((int)p.pan - 128) * 100 / 128);
-
-    auto vag = m_loader->extractVagSample(p.offset);
-    if(!vag.empty()) {
-        auto res = VagDecoder::decode(vag);
-        m_waveform->setData(res.pcm);
-
-        // Update check
-        ui->chkLoop->blockSignals(true);
-        ui->chkLoop->setChecked(res.loopEnabled);
-        ui->chkLoop->blockSignals(false);
-    }
+    ui->tableWidget->setSortingEnabled(true);
 }
 
 void MainWindow::onTableSelectionChanged() {
     auto l = ui->tableWidget->selectedItems();
     if(l.isEmpty()) return;
     int r = l.first()->row();
-    previewSample(ui->tableWidget->item(r,0)->data(Qt::UserRole).toInt(),
-                  ui->tableWidget->item(r,0)->data(Qt::UserRole+1).toInt());
+
+    int pid = ui->tableWidget->item(r,0)->data(Qt::UserRole).toInt();
+    int tid = ui->tableWidget->item(r,0)->data(Qt::UserRole+1).toInt();
+
+    auto it = std::find_if(m_hd->programs.begin(), m_hd->programs.end(), [pid](auto& p){ return p && p->id==pid; });
+    if(it == m_hd->programs.end()) return;
+    const auto& t = (*it)->tones[tid];
+
+    ui->le_offset->setText(QString("0x%1").arg(QString::number(t.bd_offset, 16).toUpper()));
+    ui->le_adsr->setText(QString("1:%1 2:%2").arg(QString::number(t.adsr1, 16).toUpper()).arg(QString::number(t.adsr2, 16).toUpper()));
+    ui->le_vol->setText(QString("V:%1 P:%2").arg(t.vol).arg(t.pan));
+
+    auto raw = m_bd->get_adpcm_block(t.bd_offset);
+    if (!raw.empty()) {
+        auto dec = EngineUtils::decode_adpcm(raw);
+        m_waveform->setData(dec.pcm);
+
+        ui->chkLoop->blockSignals(true);
+        ui->chkLoop->setChecked(dec.looping);
+        ui->chkLoop->blockSignals(false);
+    } else {
+        m_waveform->clear();
+    }
 }
 
 void MainWindow::onPlayClicked() {
@@ -259,64 +322,79 @@ void MainWindow::onPlayClicked() {
                ui->tableWidget->item(r,0)->data(Qt::UserRole+1).toInt());
 }
 
+void MainWindow::playSample(int pid, int tid) {
+    stopAudio();
+
+    auto it = std::find_if(m_hd->programs.begin(), m_hd->programs.end(), [pid](auto& p){ return p && p->id==pid; });
+    if(it == m_hd->programs.end()) return;
+    const auto& t = (*it)->tones[tid];
+
+    auto raw = m_bd->get_adpcm_block(t.bd_offset);
+    if(raw.empty()) return;
+
+    auto dec = EngineUtils::decode_adpcm(raw);
+    if(dec.pcm.empty()) return;
+
+    m_source = new RawAudioSource(dec.pcm, this);
+
+    bool userLoop = ui->chkLoop->isChecked();
+    int ls = dec.looping ? dec.loop_start : 0;
+    int le = dec.looping ? dec.loop_end : dec.pcm.size();
+
+    m_source->setLooping(userLoop, ls, le);
+    if (!m_source->open(QIODevice::ReadOnly)) {
+        delete m_source; m_source = nullptr;
+        return;
+    }
+
+    QAudioFormat fmt;
+    fmt.setSampleRate(44100);
+    fmt.setChannelCount(1);
+    fmt.setSampleFormat(QAudioFormat::Int16);
+
+    m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), fmt, this);
+    m_sink->setVolume(1.0);
+    m_sink->start(m_source);
+}
+
+void MainWindow::stopAudio() {
+    if(m_sink) { m_sink->stop(); delete m_sink; m_sink = nullptr; }
+    if(m_source) { m_source->close(); delete m_source; m_source = nullptr; }
+}
+
 void MainWindow::onStopClicked() { stopAudio(); }
-void MainWindow::onLoopToggled(bool c) { if(m_source) m_source->setLooping(c); }
+
+void MainWindow::onLoopToggled(bool c) {
+}
+
+void MainWindow::onCloseFile() {
+    stopAudio();
+    m_hd->clear();
+    m_bd->data.clear();
+    fillTable();
+    resetUi();
+    log("Closed file.");
+    ui->statusbar->showMessage("Closed.");
+}
 
 void MainWindow::resetUi() {
-    ui->tableWidget->setRowCount(0);
-    ui->le_vagOffset->clear();
-    ui->le_rootKey->clear();
-    ui->le_volume->clear();
-    ui->le_reverb->clear();
-    ui->le_env_att->clear();
-    ui->le_env_sl->clear();
-    ui->le_env_sr_rr->clear();
+    ui->le_offset->clear();
+    ui->le_adsr->clear();
+    ui->le_vol->clear();
+    m_waveform->clear();
 }
 
-
-void MainWindow::updateDetails(int i, int j) {
-    const auto& part = m_loader->getInstruments()[i].parts[j];
-
-    // 1. Basic Info
-    ui->le_vagOffset->setText(QString::number(part.offset));
-
-    // 2. Key Info
-    QString noteName = QString::number(part.key_root);
-    // Convert 60 to "C4"
-    ui->le_rootKey->setText(QString("%1 (Range: %2-%3)").arg(part.key_root).arg(part.key_min).arg(part.key_max));
-
-    ui->le_volume->setText(QString::number(part.vol));
-
-    // 3. Reverb 0x80+ = on
-    bool reverbOn = (part.reverb >= 0x80);
-    ui->le_reverb->setText(reverbOn ? "On" : "Off");
-
-    // 4. Pan
-    int panUi = ((int)part.pan - 128) * 100 / 128;
-    ui->sliderPan->setValue(panUi);
-
-    // 5. ADSR (not sure if it works.)
-    ui->le_env_att->setText(QString("A: %1").arg(QString::number(part.env_attack, 16).toUpper()));
-    ui->le_env_sl->setText(QString("SL: %1").arg(QString::number(part.env_sustain_lvl, 16).toUpper()));
-
-    // 6. 16 bit sustain and release
-    ui->le_env_sr_rr->setText(QString("R/S: %1").arg(QString::number(part.env_release_sustain, 16).toUpper().rightJustified(4, '0')));
-}
-
-void MainWindow::fillTable() {
-    ui->tableWidget->setRowCount(0);
-    const auto& insts = m_loader->getInstruments();
-    for(size_t i=0; i<insts.size(); ++i) {
-        for(size_t j=0; j<insts[i].parts.size(); ++j) {
-            int r = ui->tableWidget->rowCount();
-            ui->tableWidget->insertRow(r);
-            auto* it = new QTableWidgetItem(QString::number(i));
-            it->setData(Qt::UserRole, (int)i);
-            it->setData(Qt::UserRole+1, (int)j);
-            ui->tableWidget->setItem(r,0,it);
-            ui->tableWidget->setItem(r,1,new QTableWidgetItem(QString::number(j)));
-            ui->tableWidget->setItem(r,2,new QTableWidgetItem(QString::number(insts[i].parts[j].offset)));
-            ui->tableWidget->setItem(r,3,new QTableWidgetItem(QString::number(insts[i].parts[j].key_root)));
+void MainWindow::onExportSf2() {
+    if(m_hd->programs.empty()) return;
+    QString path = QFileDialog::getSaveFileName(this, "Export SF2", "out.sf2", "SF2 (*.sf2)");
+    if(!path.isEmpty()) {
+        log("Exporting SF2...");
+        if(Sf2Exporter::exportToSf2(path, m_hd.get(), m_bd.get())) {
+            log("SF2 Export Success.");
+            QMessageBox::information(this, "Success", "SF2 exported.");
+        } else {
+            log("SF2 Export Failed.");
+            QMessageBox::critical(this, "Error", "Export failed.");
         }
     }
 }

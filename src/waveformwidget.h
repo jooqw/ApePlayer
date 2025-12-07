@@ -15,4 +15,4 @@ protected:
 private:
     std::vector<int16_t> m_data;
 };
-#endif // WAVEFORMWIDGET_H
+#endif

@@ -1,165 +1,444 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>MainWindow</class>
- <widget class="QMainWindow" name="MainWindow">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>1024</width>
-    <height>700</height>
-   </rect>
-  </property>
-  <property name="windowTitle">
-   <string>Ape Player</string>
-  </property>
-  <widget class="QWidget" name="centralwidget">
-   <layout class="QHBoxLayout" name="horizontalLayout" stretch="2,3">
-    <item>
-     <widget class="QTableWidget" name="tableWidget">
-      <property name="selectionBehavior">
-       <enum>QAbstractItemView::SelectRows</enum>
-      </property>
-      <column>
-       <property name="text"><string>ID</string></property>
-      </column>
-      <column>
-       <property name="text"><string>Part</string></property>
-      </column>
-      <column>
-       <property name="text"><string>Offset</string></property>
-      </column>
-      <column>
-       <property name="text"><string>Root</string></property>
-      </column>
-     </widget>
-    </item>
-    <item>
-     <widget class="QFrame" name="frame">
-      <layout class="QVBoxLayout" name="verticalLayout">
-       <item>
-        <widget class="QWidget" name="waveformWidgetContainer" native="true">
-         <layout class="QVBoxLayout" name="waveformLayout"/>
-         <property name="minimumSize">
-          <size><width>0</width><height>150</height></size>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="grpControls">
-         <property name="title"><string>Playback</string></property>
-         <layout class="QGridLayout" name="gridLayout">
-          <item row="0" column="0">
-           <widget class="QPushButton" name="btnPlay"><property name="text"><string>▶ Play</string></property></widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QPushButton" name="btnStop"><property name="text"><string>⏹ Stop</string></property></widget>
-          </item>
-          <item row="0" column="2">
-           <widget class="QCheckBox" name="chkLoop"><property name="text"><string>Loop</string></property></widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="lblPan"><property name="text"><string>Pan</string></property></widget>
-          </item>
-          <item row="1" column="1" colspan="2">
-           <widget class="QSlider" name="sliderPan">
-            <property name="orientation"><enum>Qt::Horizontal</enum></property>
-            <property name="minimum"><number>-100</number></property>
-            <property name="maximum"><number>100</number></property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="grpData">
-         <property name="title"><string>Instrument Data</string></property>
-         <layout class="QFormLayout" name="formLayout">
-
-          <item row="0" column="0">
-           <widget class="QLabel" name="l1"><property name="text"><string>Offset:</string></property></widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="le_vagOffset"><property name="readOnly"><bool>true</bool></property></widget>
-          </item>
-
-          <item row="1" column="0">
-           <widget class="QLabel" name="l2"><property name="text"><string>Root Key:</string></property></widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="le_rootKey"><property name="readOnly"><bool>true</bool></property></widget>
-          </item>
-
-          <item row="2" column="0">
-           <widget class="QLabel" name="l3"><property name="text"><string>Volume:</string></property></widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLineEdit" name="le_volume"><property name="readOnly"><bool>true</bool></property></widget>
-          </item>
-
-          <item row="3" column="0">
-           <widget class="QLabel" name="lRev"><property name="text"><string>Reverb:</string></property></widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QLineEdit" name="le_reverb"><property name="readOnly"><bool>true</bool></property></widget>
-          </item>
-
-          <item row="4" column="0">
-           <widget class="QLabel" name="l4"><property name="text"><string>ADSR (Raw):</string></property></widget>
-          </item>
-          <item row="4" column="1">
-           <layout class="QHBoxLayout" name="adsrLayout">
-            <item><widget class="QLineEdit" name="le_env_att">
-              <property name="placeholderText"><string>Att</string></property>
-              <property name="readOnly"><bool>true</bool></property>
-              </widget></item>
-            <item><widget class="QLineEdit" name="le_env_sl">
-              <property name="placeholderText"><string>SL</string></property>
-              <property name="readOnly"><bool>true</bool></property>
-              </widget></item>
-            <item><widget class="QLineEdit" name="le_env_sr_rr">
-              <property name="placeholderText"><string>SR/RR</string></property>
-              <property name="readOnly"><bool>true</bool></property>
-              </widget></item>
-           </layout>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer">
-         <property name="orientation"><enum>Qt::Vertical</enum></property>
-        </spacer>
-       </item>
+  <class>MainWindow</class>
+  <widget class="QMainWindow" name="MainWindow">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>1200</width>
+        <height>800</height>
+      </rect>
+    </property>
+    <property name="windowTitle">
+      <string>ApePlayer</string>
+    </property>
+    <widget class="QWidget" name="centralwidget">
+      <layout class="QVBoxLayout" name="mainLayout">
+        <property name="spacing">
+          <number>6</number>
+        </property>
+        <property name="leftMargin">
+          <number>9</number>
+        </property>
+        <property name="topMargin">
+          <number>9</number>
+        </property>
+        <property name="rightMargin">
+          <number>9</number>
+        </property>
+        <property name="bottomMargin">
+          <number>9</number>
+        </property>
+        <item>
+          <widget class="QTabWidget" name="tabWidget">
+            <property name="currentIndex">
+              <number>0</number>
+            </property>
+            <widget class="QWidget" name="tabInstruments">
+              <attribute name="title">
+                <string>Instruments</string>
+              </attribute>
+              <layout class="QHBoxLayout" name="hLayoutInst">
+                <item>
+                  <widget class="QSplitter" name="splitter">
+                    <property name="orientation">
+                      <enum>Qt::Horizontal</enum>
+                    </property>
+                    <property name="handleWidth">
+                      <number>6</number>
+                    </property>
+                    <property name="childrenCollapsible">
+                      <bool>false</bool>
+                    </property>
+                    <widget class="QTableWidget" name="tableWidget">
+                      <property name="alternatingRowColors">
+                        <bool>true</bool>
+                      </property>
+                      <property name="selectionMode">
+                        <enum>QAbstractItemView::SingleSelection</enum>
+                      </property>
+                      <property name="selectionBehavior">
+                        <enum>QAbstractItemView::SelectRows</enum>
+                      </property>
+                      <property name="sortingEnabled">
+                        <bool>true</bool>
+                      </property>
+                      <attribute name="horizontalHeaderStretchLastSection">
+                        <bool>true</bool>
+                      </attribute>
+                      <attribute name="verticalHeaderVisible">
+                        <bool>false</bool>
+                      </attribute>
+                      <column>
+                        <property name="text">
+                          <string>ID</string>
+                        </property>
+                      </column>
+                      <column>
+                        <property name="text">
+                          <string>Type</string>
+                        </property>
+                      </column>
+                      <column>
+                        <property name="text">
+                          <string>Offset</string>
+                        </property>
+                      </column>
+                      <column>
+                        <property name="text">
+                          <string>Note Range</string>
+                        </property>
+                      </column>
+                    </widget>
+                    <widget class="QWidget" name="rightPanel" native="true">
+                      <layout class="QVBoxLayout" name="vLayoutRight">
+                        <property name="leftMargin">
+                          <number>0</number>
+                        </property>
+                        <property name="topMargin">
+                          <number>0</number>
+                        </property>
+                        <property name="rightMargin">
+                          <number>0</number>
+                        </property>
+                        <property name="bottomMargin">
+                          <number>0</number>
+                        </property>
+                        <item>
+                          <widget class="QFrame" name="waveformFrame">
+                            <property name="minimumSize">
+                              <size>
+                                <width>0</width>
+                                <height>250</height>
+                              </size>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true">background-color: #222; border: 1px solid #444; border-radius: 4px;</string>
+                            </property>
+                            <property name="frameShape">
+                              <enum>QFrame::StyledPanel</enum>
+                            </property>
+                            <property name="frameShadow">
+                              <enum>QFrame::Raised</enum>
+                            </property>
+                            <layout class="QVBoxLayout" name="waveformLayout"/>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QGroupBox" name="grpControls">
+                            <property name="title">
+                              <string>Preview Control</string>
+                            </property>
+                            <layout class="QHBoxLayout" name="ctlLayout">
+                              <item>
+                                <widget class="QPushButton" name="btnPlay">
+                                  <property name="text">
+                                    <string>Play</string>
+                                  </property>
+                                  <property name="icon">
+                                    <iconset theme="media-playback-start">
+                                      <normaloff>.</normaloff>media-playback-start</iconset>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <widget class="QPushButton" name="btnStop">
+                                  <property name="text">
+                                    <string>Stop</string>
+                                  </property>
+                                  <property name="icon">
+                                    <iconset theme="media-playback-stop">
+                                      <normaloff>.</normaloff>media-playback-stop</iconset>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <widget class="Line" name="line">
+                                  <property name="orientation">
+                                    <enum>Qt::Vertical</enum>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <widget class="QCheckBox" name="chkLoop">
+                                  <property name="text">
+                                    <string>Loop Playback</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <spacer name="horizontalSpacer">
+                                  <property name="orientation">
+                                    <enum>Qt::Horizontal</enum>
+                                  </property>
+                                  <property name="sizeHint" stdset="0">
+                                    <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                    </size>
+                                  </property>
+                                </spacer>
+                              </item>
+                            </layout>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QGroupBox" name="grpInfo">
+                            <property name="title">
+                              <string>Instrument Details</string>
+                            </property>
+                            <layout class="QFormLayout" name="frmInfo">
+                              <property name="fieldGrowthPolicy">
+                                <enum>QFormLayout::ExpandingFieldsGrow</enum>
+                              </property>
+                              <item row="0" column="0">
+                                <widget class="QLabel" name="l1">
+                                  <property name="text">
+                                    <string>Offset:</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item row="0" column="1">
+                                <widget class="QLineEdit" name="le_offset">
+                                  <property name="readOnly">
+                                    <bool>true</bool>
+                                  </property>
+                                  <property name="placeholderText">
+                                    <string>0x00000000</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item row="1" column="0">
+                                <widget class="QLabel" name="l2">
+                                  <property name="text">
+                                    <string>ADSR:</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item row="1" column="1">
+                                <widget class="QLineEdit" name="le_adsr">
+                                  <property name="readOnly">
+                                    <bool>true</bool>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item row="2" column="0">
+                                <widget class="QLabel" name="l3">
+                                  <property name="text">
+                                    <string>Vol/Pan:</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item row="2" column="1">
+                                <widget class="QLineEdit" name="le_vol">
+                                  <property name="readOnly">
+                                    <bool>true</bool>
+                                  </property>
+                                </widget>
+                              </item>
+                            </layout>
+                          </widget>
+                        </item>
+                        <item>
+                          <spacer name="verticalSpacer">
+                            <property name="orientation">
+                              <enum>Qt::Vertical</enum>
+                            </property>
+                            <property name="sizeHint" stdset="0">
+                              <size>
+                                <width>20</width>
+                                <height>40</height>
+                              </size>
+                            </property>
+                          </spacer>
+                        </item>
+                      </layout>
+                    </widget>
+                  </widget>
+                </item>
+              </layout>
+            </widget>
+            <widget class="QWidget" name="tabExport">
+              <attribute name="title">
+                <string>Export / Render</string>
+              </attribute>
+              <layout class="QVBoxLayout" name="vLayoutExport">
+                <item>
+                  <widget class="QGroupBox" name="grpWav">
+                    <property name="title">
+                      <string>WAV Render</string>
+                    </property>
+                    <layout class="QGridLayout" name="gridWav">
+                      <item row="0" column="0">
+                        <widget class="QLabel" name="lbSq">
+                          <property name="text">
+                            <string>Sequence File (SQ/MID):</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="0" column="1">
+                        <widget class="QLineEdit" name="le_sqPath">
+                          <property name="placeholderText">
+                            <string>Select a sequence file...</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="0" column="2">
+                        <widget class="QToolButton" name="btnBrowseSq">
+                          <property name="text">
+                            <string>...</string>
+                          </property>
+                          <property name="icon">
+                            <iconset theme="document-open">
+                              <normaloff>.</normaloff>document-open</iconset>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="1" column="0" colspan="2">
+                        <widget class="QCheckBox" name="chkReverb">
+                          <property name="text">
+                            <string>Enable Reverb Processing</string>
+                          </property>
+                          <property name="checked">
+                            <bool>true</bool>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="1" column="2">
+                        <widget class="QPushButton" name="btnRenderWav">
+                          <property name="text">
+                            <string>Render WAV</string>
+                          </property>
+                          <property name="icon">
+                            <iconset theme="media-record">
+                              <normaloff>.</normaloff>media-record</iconset>
+                          </property>
+                        </widget>
+                      </item>
+                    </layout>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QGroupBox" name="grpBulk">
+                    <property name="title">
+                      <string>Bulk Operations</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="bulkLayout">
+                      <item>
+                        <widget class="QLabel" name="lbBulk">
+                          <property name="text">
+                            <string>Convert entire directory of .HD and .MID files to .SF2 SoundFonts and copy the midi files.</string>
+                          </property>
+                          <property name="wordWrap">
+                            <bool>true</bool>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <widget class="QPushButton" name="btnBulk">
+                          <property name="text">
+                            <string>Start Bulk Export...</string>
+                          </property>
+                          <property name="icon">
+                            <iconset theme="system-run">
+                              <normaloff>.</normaloff>system-run</iconset>
+                          </property>
+                        </widget>
+                      </item>
+                    </layout>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QGroupBox" name="grpLog">
+                    <property name="title">
+                      <string>Output Log</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="verticalLayout_2">
+                      <item>
+                        <widget class="QPlainTextEdit" name="logOutput">
+                          <property name="readOnly">
+                            <bool>true</bool>
+                          </property>
+                          <property name="plainText">
+                            <string>Ready.</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <widget class="QProgressBar" name="progressBar">
+                          <property name="value">
+                            <number>0</number>
+                          </property>
+                        </widget>
+                      </item>
+                    </layout>
+                  </widget>
+                </item>
+              </layout>
+            </widget>
+          </widget>
+        </item>
       </layout>
-     </widget>
-    </item>
-   </layout>
+    </widget>
+    <widget class="QMenuBar" name="menubar">
+      <property name="geometry">
+        <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>1200</width>
+          <height>22</height>
+        </rect>
+      </property>
+      <widget class="QMenu" name="menuFile">
+        <property name="title">
+          <string>File</string>
+        </property>
+        <addaction name="actionOpen_HD"/>
+        <addaction name="actionExportSF2"/>
+        <addaction name="separator"/>
+        <addaction name="actionClose"/>
+      </widget>
+      <addaction name="menuFile"/>
+    </widget>
+    <widget class="QStatusBar" name="statusbar"/>
+    <action name="actionOpen_HD">
+      <property name="icon">
+        <iconset theme="document-open">
+          <normaloff>.</normaloff>document-open</iconset>
+      </property>
+      <property name="text">
+        <string>Open .HD File...</string>
+      </property>
+      <property name="shortcut">
+        <string>Ctrl+O</string>
+      </property>
+    </action>
+    <action name="actionClose">
+      <property name="icon">
+        <iconset theme="application-exit">
+          <normaloff>.</normaloff>application-exit</iconset>
+      </property>
+      <property name="text">
+        <string>Close</string>
+      </property>
+      <property name="shortcut">
+        <string>Ctrl+Q</string>
+      </property>
+    </action>
+    <action name="actionExportSF2">
+      <property name="icon">
+        <iconset theme="document-save-as">
+          <normaloff>.</normaloff>document-save-as</iconset>
+      </property>
+      <property name="text">
+        <string>Export Current to SF2...</string>
+      </property>
+      <property name="shortcut">
+        <string>Ctrl+E</string>
+      </property>
+    </action>
   </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect><x>0</x><y>0</y><width>1024</width><height>22</height></rect>
-   </property>
-   <widget class="QMenu" name="menuFile">
-    <property name="title"><string>File</string></property>
-    <addaction name="actionOpen_HD"/>
-    <addaction name="actionClose"/>
-   </widget>
-   <widget class="QMenu" name="menuConvert">
-    <property name="title"><string>Convert</string></property>
-    <addaction name="actionExportSF2"/>
-    <addaction name="separator"/>
-    <addaction name="actionBulkExport"/>
-   </widget>
-   <addaction name="menuFile"/>
-   <addaction name="menuConvert"/>
-  </widget>
-  <widget class="QStatusBar" name="statusbar"/>
-  <action name="actionOpen_HD"><property name="text"><string>Open .HD File</string></property></action>
-  <action name="actionClose"><property name="text"><string>Close</string></property></action>
-  <action name="actionExportSF2"><property name="text"><string>Export SF2</string></property></action>
-  <action name="actionBulkExport"><property name="text"><string>Bulk Export Folder (HD + MIDI)</string></property></action>
- </widget>
- <resources/>
- <connections/>
+  <resources/>
+  <connections/>
 </ui>
