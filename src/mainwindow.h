@@ -14,9 +14,6 @@ QT_END_NAMESPACE
 class QAudioSink;
 class WaveformWidget;
 
-// =============================================================
-// RawAudioSource Class
-// =============================================================
 class RawAudioSource : public QIODevice {
     Q_OBJECT
 public:
@@ -41,9 +38,6 @@ private:
     qint64 m_le;
 };
 
-// =============================================================
-// MainWindow Class
-// =============================================================
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -71,6 +65,8 @@ private:
     void resetUi();
 
     void log(const QString& msg);
+
+    void logProgramDetails(int progId);
 
     Ui::MainWindow *ui;
     std::unique_ptr<HDParser> m_hd;

@@ -4,21 +4,23 @@
 #include <QDebug>
 #include <fstream>
 #include <map>
+#include <vector>
+#include <cmath>
 
 using namespace sf2cute;
+
+struct CachedSample {
+    std::shared_ptr<SFSample> sample;
+    bool loopEnabled;
+};
 
 bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
     SoundFont sf2;
     sf2.set_sound_engine("Emu10k1");
-    sf2.set_bank_name("Ape Export");
+    sf2.set_bank_name("ApePlayer Export");
     sf2.set_rom_name("ROM");
 
-    struct CachedSample {
-        std::shared_ptr<SFSample> sample;
-        bool loopEnabled;
-    };
     std::map<uint32_t, CachedSample> sampleCache;
-
     int presetIdx = 0;
 
     for (const auto& prog : hd->programs) {
@@ -27,64 +29,130 @@ bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
         QString instName = QString("Prg_%1").arg(prog->id);
         std::shared_ptr<SFInstrument> sfInst = sf2.NewInstrument(instName.toStdString());
 
-        for (const auto& tone : prog->tones) {
-            std::shared_ptr<SFSample> sfSample;
-            bool isLooping = false;
+        std::vector<bool> processed(prog->tones.size(), false);
 
-            if (sampleCache.count(tone.bd_offset)) {
-                sfSample = sampleCache[tone.bd_offset].sample;
-                isLooping = sampleCache[tone.bd_offset].loopEnabled;
-            } else {
-                std::vector<uint8_t> raw = bd->get_adpcm_block(tone.bd_offset);
-                if (raw.empty()) continue;
+        for (size_t i = 0; i < prog->tones.size(); ++i) {
+            if (processed[i]) continue;
+            processed[i] = true;
 
-                DecodedSample res = EngineUtils::decode_adpcm(raw);
-                if (res.pcm.empty()) continue;
+            const auto& t1 = prog->tones[i];
 
-                uint32_t ls = (res.loop_start > 0) ? res.loop_start : 0;
-                uint32_t le = (res.loop_end > ls) ? res.loop_end : res.pcm.size();
+            int pairIdx = -1;
+            bool isStereoPair = false;
 
-                sfSample = sf2.NewSample(
-                    QString("Smp_%1").arg(tone.bd_offset).toStdString(),
-                                         res.pcm, ls, le, 44100,
-                                         tone.root_key > 0 ? tone.root_key : 60,
-                                         tone.pitch_fine
-                );
-                sampleCache[tone.bd_offset] = { sfSample, res.looping };
-                isLooping = res.looping;
+            if (prog->is_layered && (i + 1 < prog->tones.size())) {
+                const auto& t2 = prog->tones[i+1];
+
+                // Criteria for merging:
+                // 1. Same Key Range
+                // 2. Same Root Key
+                // 3. One is Left (<10), One is Right (>117)
+                // 4. Same ADSR (approx)
+
+                bool keysMatch = (t1.min_note == t2.min_note && t1.max_note == t2.max_note && t1.root_key == t2.root_key);
+                bool panSplit = (std::abs((int)t1.pan - 0) < 20 && std::abs((int)t2.pan - 127) < 20) ||
+                (std::abs((int)t1.pan - 127) < 20 && std::abs((int)t2.pan - 0) < 20);
+
+                if (keysMatch && panSplit) {
+                    pairIdx = i + 1;
+                    isStereoPair = true;
+                    processed[pairIdx] = true;
+                }
             }
 
-            SFInstrumentZone zone(sfSample);
+            auto addZone = [&](const Tone& t, int forcedPan = -1) {
+                std::shared_ptr<SFSample> sfSample;
+                bool isLooping = false;
 
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kSampleModes,
-                                              uint16_t(isLooping ? SampleMode::kLoopContinuously : SampleMode::kNoLoop)));
+                // 1. Get or Create Sample
+                if (sampleCache.count(t.bd_offset)) {
+                    sfSample = sampleCache[t.bd_offset].sample;
+                    isLooping = sampleCache[t.bd_offset].loopEnabled;
+                } else {
+                    std::vector<uint8_t> raw = bd->get_adpcm_block(t.bd_offset);
+                    if (raw.empty()) return; // Skip invalid data
 
-            uint8_t kMin = tone.min_note; uint8_t kMax = tone.max_note;
-            if (kMin > kMax) std::swap(kMin, kMax);
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kKeyRange, RangesType(kMin, kMax)));
+                    DecodedSample res = EngineUtils::decode_adpcm(raw);
+                    if (res.pcm.empty()) return;
 
-            int pan = ((int)tone.pan + (int)prog->master_pan - 64);
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kPan, (Util::clamp_pan(pan) - 64) * 10));
-            if (tone.is_reverb()) zone.SetGenerator(SFGeneratorItem(SFGenerator::kReverbEffectsSend, 500));
+                    uint32_t ls = (res.loop_start > 0) ? res.loop_start : 0;
+                    uint32_t le = (res.loop_end > ls) ? res.loop_end : res.pcm.size();
 
-            u32 reg = ((u32)tone.adsr2 << 16) | tone.adsr1;
+                    sfSample = sf2.NewSample(
+                        QString("Smp_%1").arg(t.bd_offset).toStdString(),
+                                             res.pcm, ls, le, 44100,
+                                             t.root_key > 0 ? t.root_key : 60,
+                                             t.pitch_fine
+                    );
+                    sampleCache[t.bd_offset] = { sfSample, res.looping };
+                    isLooping = res.looping;
+                }
 
-            int16_t attTime = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Attack);
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kAttackVolEnv, attTime));
+                // 2. Create Zone
+                SFInstrumentZone zone(sfSample);
 
-            int16_t decTime = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Decay);
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kDecayVolEnv, decTime));
+                // Loop Mode
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kSampleModes,
+                                                  uint16_t(isLooping ? SampleMode::kLoopContinuously : SampleMode::kNoLoop)));
 
-            int16_t relTime = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Release);
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kReleaseVolEnv, relTime));
+                // Key Range
+                uint8_t kMin = t.min_note; uint8_t kMax = t.max_note;
+                if (kMin > kMax) std::swap(kMin, kMax);
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kKeyRange, RangesType(kMin, kMax)));
 
-            u32 sl = tone.adsr1 & 0x0F;
-            uint16_t sf_sl = (15 - sl) * (1000 / 15);
-            zone.SetGenerator(SFGeneratorItem(SFGenerator::kSustainVolEnv, sf_sl));
+                // Pan (Use forcedPan if provided, else calculate)
+                int panVal;
+                if (forcedPan != -1) {
+                    panVal = forcedPan; // Expected -500 to 500
+                } else {
+                    int p = ((int)t.pan + (int)prog->master_pan - 64);
+                    panVal = (Util::clamp_pan(p) - 64) * 10;
+                }
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kPan, panVal));
 
-            sfInst->AddZone(std::move(zone));
+                // Reverb
+                if (t.is_reverb()) {
+                    zone.SetGenerator(SFGeneratorItem(SFGenerator::kReverbEffectsSend, 500));
+                }
+
+                // ADSR (Hardware Simulation)
+                u32 reg = ((u32)t.adsr2 << 16) | t.adsr1;
+
+                int16_t att = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Attack);
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kAttackVolEnv, att));
+
+                int16_t dec = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Decay);
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kDecayVolEnv, dec));
+
+                int16_t rel = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Release);
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kReleaseVolEnv, rel));
+
+                // Sustain Level (Convert 0-15 to attenuation)
+                u32 sl = t.adsr1 & 0x0F;
+                uint16_t sf_sl = (15 - sl) * (1000 / 15);
+                zone.SetGenerator(SFGeneratorItem(SFGenerator::kSustainVolEnv, sf_sl));
+
+                sfInst->AddZone(std::move(zone));
+            };
+
+
+            if (isStereoPair) {
+                const auto& t2 = prog->tones[pairIdx];
+
+                if (t1.bd_offset == t2.bd_offset) {
+                    //Fake Stereo
+                    addZone(t1, 0);
+                } else {
+                    // True Stereo
+                    addZone(t1);
+                    addZone(t2);
+                }
+            } else {
+                addZone(t1);
+            }
         }
 
+        // Create Preset for Instrument
         std::shared_ptr<SFPreset> preset = sf2.NewPreset(QString("Preset %1").arg(prog->id).toStdString(), presetIdx++, 0);
         SFPresetZone pZone(sfInst);
         pZone.SetGenerator(SFGeneratorItem(SFGenerator::kKeyRange, RangesType(0, 127)));
@@ -95,5 +163,8 @@ bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
         std::ofstream ofs(path.toStdString(), std::ios::binary);
         sf2.Write(ofs);
         return true;
-    } catch (...) { return false; }
+    } catch (const std::exception& e) {
+        qDebug() << "Export Error:" << e.what();
+        return false;
+    }
 }

@@ -50,6 +50,10 @@ struct Program {
     u8 master_pan;
     u8 pitch_mult;
     u8 breath_idx;
+
+    bool is_sfx = false;
+    bool is_layered = false;  // (type & 0x80) != 0
+
     std::vector<Tone> tones;
 };
 

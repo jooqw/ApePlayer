@@ -6,8 +6,8 @@
 #include <memory>
 #include <map>
 #include <string>
+#include <functional>
 
-// --- Parsers ---
 class BDParser {
 public:
     std::vector<u8> data;
@@ -31,7 +31,6 @@ private:
     void parse_breath_waves(u32 base_offset);
 };
 
-// --- SPU ---
 
 class VolumeEnvelope {
 public:
@@ -91,9 +90,11 @@ struct Voice {
     int tone_pan = 64;
     int ch = 0; int note_key = 0; bool active = false; bool reverb_on = false;
     std::shared_ptr<HardwareADSR> adsr; bool release_pending = false;
-    VibratoEngine vibrato; bool vibrato_enabled = false; double vibrato_rate_val = 0.0;
-    int vibrato_attack_counter = 0; int vibrato_attack_time = 0x78; int vibrato_attack_speed = 1;
-    double tick_accumulator = 0.0;
+
+    VibratoEngine vibrato;
+    bool vibrato_enabled = false;
+    double vibrato_rate_val = 0.0;
+
     bool noise_mode = false;
 };
 
@@ -130,10 +131,7 @@ public:
     void apply_seq_header(const std::map<int, SQChannelInit>& inits);
 
     void render(int num_samples, std::vector<float>& dl, std::vector<float>& dr, std::vector<float>& wl, std::vector<float>& wr, float samples_per_tick);
-    void advance_vibrato_ticks(int ticks);
 };
-
-// --- Sequencer & Export ---
 
 struct SQEvent { int delta; std::string type; int cmd, ch, note, vel, val, cc_val; };
 
@@ -170,6 +168,6 @@ public:
     static int16_t calculate_adsr_timecents(u32 reg_val, HardwareADSR::Phase phase);
 };
 
-bool ExportSequenceToWav(const std::string& sqPath, const std::string& wavPath, HDParser* hd, BDParser* bd, bool useReverb, bool isMidi);
+bool ExportSequenceToWav(const std::string& sqPath, const std::string& wavPath, HDParser* hd, BDParser* bd, bool useReverb, bool isMidi, std::function<void(int current, int total)> progressCallback = nullptr);
 
 #endif // ENGINE_H
