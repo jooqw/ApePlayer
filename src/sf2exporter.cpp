@@ -21,7 +21,6 @@ bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
     sf2.set_rom_name("ROM");
 
     std::map<uint32_t, CachedSample> sampleCache;
-    int presetIdx = 0;
 
     for (const auto& prog : hd->programs) {
         if (!prog) continue;
@@ -152,8 +151,8 @@ bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
             }
         }
 
-        // Create Preset for Instrument
-        std::shared_ptr<SFPreset> preset = sf2.NewPreset(QString("Preset %1").arg(prog->id).toStdString(), presetIdx++, 0);
+        // Create Preset for Instrument - use prog->id as the preset number
+        std::shared_ptr<SFPreset> preset = sf2.NewPreset(QString("Preset %1").arg(prog->id).toStdString(), prog->id, 0);
         SFPresetZone pZone(sfInst);
         pZone.SetGenerator(SFGeneratorItem(SFGenerator::kKeyRange, RangesType(0, 127)));
         preset->AddZone(std::move(pZone));

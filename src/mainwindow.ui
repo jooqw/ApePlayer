@@ -298,7 +298,7 @@
                       <item row="1" column="0" colspan="2">
                         <widget class="QCheckBox" name="chkReverb">
                           <property name="text">
-                            <string>Enable Reverb Processing</string>
+                            <string>Enable generic reverb processing</string>
                           </property>
                           <property name="checked">
                             <bool>true</bool>
@@ -322,13 +322,13 @@
                 <item>
                   <widget class="QGroupBox" name="grpBulk">
                     <property name="title">
-                      <string>Bulk Operations</string>
+                      <string>Operations</string>
                     </property>
                     <layout class="QVBoxLayout" name="bulkLayout">
                       <item>
                         <widget class="QLabel" name="lbBulk">
                           <property name="text">
-                            <string>Convert entire directory of .HD and .MID files to .SF2 SoundFonts and copy the midi files.</string>
+                            <string>Convert entire directory of .HD files to .SF2 SoundFonts and .SQ files to MIDI.</string>
                           </property>
                           <property name="wordWrap">
                             <bool>true</bool>
@@ -343,6 +343,17 @@
                           <property name="icon">
                             <iconset theme="system-run">
                               <normaloff>.</normaloff>system-run</iconset>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <widget class="QPushButton" name="btnSeq2Midi">
+                          <property name="text">
+                            <string>Convert SQ to MIDI...</string>
+                          </property>
+                          <property name="icon">
+                            <iconset theme="audio-x-generic">
+                              <normaloff>.</normaloff>audio-x-generic</iconset>
                           </property>
                         </widget>
                       </item>

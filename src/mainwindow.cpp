@@ -14,6 +14,7 @@
 #include <QDebug>
 #include <QTimer>
 #include <QScrollBar>
+#include <QRegularExpression>
 #include <algorithm>
 
 RawAudioSource::RawAudioSource(const std::vector<int16_t>& data, QObject* parent)
@@ -81,14 +82,15 @@ MainWindow::MainWindow(QWidget *parent)
 
         connect(ui->btnRenderWav, &QPushButton::clicked, this, &MainWindow::onRenderWav);
         connect(ui->btnBulk, &QPushButton::clicked, this, &MainWindow::onBulkExport);
+        connect(ui->btnSeq2Midi, &QPushButton::clicked, this, &MainWindow::onSeq2Midi);
 
         QTimer::singleShot(500, this, [this](){
             QMessageBox::information(this, "Welcome",
                                      "This program supports loading .HD/.BD/.SQ files\n\n"
                                      "IT'S NOT ACCURATE!! Contribute if you feel to.\n"
-                                     "List of things that needs fix:\n"
-                                     " - Vibrato\n"
-                                     " - Panning etc...");
+                                     "TODO:\n"
+                                     " - Improve Vibrato\n"
+                                     " - Investigate files that aren't playing correctly...");
         });
 }
 
@@ -453,5 +455,36 @@ void MainWindow::onExportSf2() {
             log("SF2 Export Failed.");
             QMessageBox::critical(this, "Error", "Export failed. Check console for details.");
         }
+    }
+}
+
+void MainWindow::onSeq2Midi() {
+    QString inputPath = QFileDialog::getOpenFileName(this, "Select SQ File", "", "SQ Files (*.sq *.SQ)");
+    if (inputPath.isEmpty()) return;
+    
+    QString defaultOutput = inputPath;
+    QRegularExpression re("\\.sq$", QRegularExpression::CaseInsensitiveOption);
+    defaultOutput.replace(re, ".mid");
+    
+    QString outputPath = QFileDialog::getSaveFileName(this, "Save MIDI File", defaultOutput, "MIDI Files (*.mid)");
+    if (outputPath.isEmpty()) return;
+    
+    log("Converting SQ to MIDI...");
+    log("Input: " + inputPath);
+    log("Output: " + outputPath);
+    
+    SQParser sq;
+    if (!sq.load(inputPath.toStdString())) {
+        log("Error: Failed to load SQ file.");
+        QMessageBox::critical(this, "Error", "Failed to load SQ file.");
+        return;
+    }
+    
+    if (sq.saveToMidi(outputPath.toStdString())) {
+        log("Success: MIDI file created.");
+        QMessageBox::information(this, "Success", "SQ file converted to MIDI successfully.");
+    } else {
+        log("Error: Failed to save MIDI file.");
+        QMessageBox::critical(this, "Error", "Failed to save MIDI file.");
     }
 }

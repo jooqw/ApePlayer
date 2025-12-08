@@ -3,14 +3,13 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <iostream>
 #include <random>
 #include <iomanip>
 
-// =============================================================
 // INTERNAL HELPERS
-// =============================================================
 
 class FastNoise {
     uint32_t state = 0xA491;
@@ -25,10 +24,6 @@ public:
 
 static const double F0[] = {0.0, 0.9375, 1.796875, 1.53125, 1.90625};
 static const double F1[] = {0.0, 0.0, -0.8125, -0.859375, -0.9375};
-
-// =============================================================
-// BD PARSER
-// =============================================================
 
 bool BDParser::load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
@@ -54,10 +49,6 @@ std::vector<u8> BDParser::get_adpcm_block(u32 start_offset) {
     }
     return raw_blocks;
 }
-
-// =============================================================
-// HD PARSER
-// =============================================================
 
 void HDParser::clear() { programs.clear(); breath_scripts.clear(); data.clear(); }
 
@@ -139,9 +130,7 @@ void HDParser::parse_breath_waves(u32 base_offset) {
 
 void HDParser::print_debug_info() const { /* ... */ }
 
-// =============================================================
 // ENGINE UTILS
-// =============================================================
 
 DecodedSample EngineUtils::decode_adpcm(const std::vector<u8>& adpcm_data) {
     DecodedSample result;
@@ -184,10 +173,6 @@ int16_t EngineUtils::ps2_vol_to_cb(u8 vol) {
 int16_t EngineUtils::calculate_adsr_timecents(u32 reg_val, HardwareADSR::Phase phase) {
     return HardwareADSR::simulate_timecents(reg_val, phase);
 }
-
-// =============================================================
-// HARDWARE ADSR
-// =============================================================
 
 void VolumeEnvelope::Reset(u8 rate_, u8 rate_mask_, bool decreasing_, bool exponential_, bool phase_invert_) {
     rate = rate_; decreasing = decreasing_; exponential = exponential_;
@@ -285,10 +270,6 @@ int16_t HardwareADSR::simulate_timecents(u32 reg_val, Phase target_phase) {
     return static_cast<int16_t>(1200.0 * std::log2(seconds));
 }
 
-// =============================================================
-// REVERB ENGINE
-// =============================================================
-
 ReverbEngine::ReverbEngine() {
     ram.resize(256 * 1024, 0); std::memset(&regs, 0, sizeof(ReverbRegs));
 }
@@ -355,46 +336,100 @@ void ReverbEngine::process(const std::vector<float>& in_l, const std::vector<flo
     }
 }
 
-// =============================================================
-// VIBRATO ENGINE
-// =============================================================
+static const std::array<u8, 256> kVibratoSineTable = []() {
+    std::array<u8, 256> table{};
+    for (size_t i = 0; i < table.size(); ++i) {
+        double s = std::sin((double)i * 2.0 * M_PI / 256.0);
+        int v = (int)std::round(127.5 + 127.5 * s);
+        table[i] = (u8)std::clamp(v, 0, 255);
+    }
+    return table;
+}();
 
-void VibratoEngine::init(const std::vector<u8>& data) {
-    lfo_table = data; active = !lfo_table.empty();
-    if (active) {
-        double nearest_dist = 256.0;
-        for (size_t i = 0; i < lfo_table.size(); i++) {
-            double dist = std::abs((double)lfo_table[i] - 127.0);
-            if (dist < nearest_dist) { nearest_dist = dist; phase = (double)i; }
+void VibratoEngine::init(const std::vector<u8>& wave_data,
+                         const std::vector<u8>& depth_data,
+                         u8 start_phase,
+                         u8 start_depth_phase) {
+    // PS1 driver uses a sine table, allows override but default to sine
+    lfo_table.clear();
+    if (!wave_data.empty()) lfo_table = wave_data;
+    else lfo_table.assign(kVibratoSineTable.begin(), kVibratoSineTable.end());
+
+    // Breath apply and smooth and wrap to avoid edge clicks
+    depth_table.clear();
+    if (!depth_data.empty()) {
+        depth_table = depth_data;
+        if (depth_table.size() > 3) {
+            std::vector<u8> smoothed(depth_table.size());
+            size_t n = depth_table.size();
+            for (size_t i = 0; i < n; ++i) {
+                int prev = depth_table[(i + n - 1) % n];
+                int cur  = depth_table[i];
+                int next = depth_table[(i + 1) % n];
+                int avg = (prev + cur + next) / 3;
+                smoothed[i] = (u8)std::clamp(avg, 0, 255);
+            }
+            depth_table.swap(smoothed);
         }
+        if (depth_table.size() >= 2) depth_table.back() = depth_table.front();
+    }
+
+    active = !lfo_table.empty();
+    if (active) {
+        double max_sz = (double)lfo_table.size();
+        phase = std::fmod((double)start_phase, max_sz);
+        if (phase < 0.0) phase += max_sz;
     } else phase = 0.0;
+
+    if (!depth_table.empty()) {
+        double max_sz = (double)depth_table.size();
+        depth_phase = std::fmod((double)start_depth_phase, max_sz);
+        if (depth_phase < 0.0) depth_phase += max_sz;
+    } else depth_phase = 0.0;
 }
 
-void VibratoEngine::tick(double rate_step) {
+void VibratoEngine::tick(double rate_step, double depth_rate_step) {
     if (!active || lfo_table.empty()) return;
     phase += rate_step;
     double max_sz = (double)lfo_table.size();
     if (phase >= max_sz) phase = std::fmod(phase, max_sz);
     if (phase < 0.0) { phase = std::fmod(phase, max_sz); if (phase < 0.0) phase += max_sz; }
+
+    if (!depth_table.empty()) {
+        depth_phase += depth_rate_step;
+        double depth_sz = (double)depth_table.size();
+        if (depth_phase >= depth_sz) depth_phase = std::fmod(depth_phase, depth_sz);
+        if (depth_phase < 0.0) { depth_phase = std::fmod(depth_phase, depth_sz); if (depth_phase < 0.0) depth_phase += depth_sz; }
+    }
 }
 
 float VibratoEngine::get_pitch_offset() const {
     if (!active || lfo_table.empty()) return 0.0f;
-    size_t sz = lfo_table.size();
-    int idx0 = (int)phase;
-    double frac = phase - idx0;
-    idx0 = idx0 % sz; if (idx0 < 0) idx0 += sz;
-    int idx1 = (idx0 + 1) % sz;
-    double val0 = (double)lfo_table[idx0]; double val1 = (double)lfo_table[idx1];
-    double interp = val0 + (val1 - val0) * frac;
-    uint32_t lfo_val = (uint32_t)std::round(interp); lfo_val = std::min(lfo_val, 255U);
-    double center_offset = (lfo_val / 255.0) - 0.5;
-    return (float)(center_offset * 2.0 * depth);
+
+    auto sample_table = [](const std::vector<u8>& tbl, double ph) -> double {
+        size_t sz = tbl.size();
+        int idx0 = (int)ph;
+        double frac = ph - idx0;
+        idx0 = idx0 % sz; if (idx0 < 0) idx0 += sz;
+        int idx1 = (idx0 + 1) % sz;
+        double val0 = (double)tbl[idx0]; double val1 = (double)tbl[idx1];
+        double interp = val0 + (val1 - val0) * frac;
+        uint32_t v = (uint32_t)std::round(interp); return (double)std::min(v, 255U);
+    };
+
+    double lfo_val = sample_table(lfo_table, phase);
+    double center_offset = (lfo_val / 255.0) - 0.5; // [-0.5, +0.5]
+
+    double depth_scale = 1.0;
+    if (!depth_table.empty()) {
+        double dval = sample_table(depth_table, depth_phase);
+        depth_scale = dval / 255.0; // [0,1]
+    }
+
+    return (float)(center_offset * 2.0 * depth * depth_scale);
 }
 
-// =============================================================
 // SPU CORE
-// =============================================================
 
 void SPU::ChannelState::reset_controllers() {
     vol = 127; expr = 127; pan = 64;
@@ -492,17 +527,26 @@ void SPU::note_on(int ch_idx, int note, int vel) {
             int breath_idx = -1;
             if (target_tone->use_prog_breath()) breath_idx = prog->breath_idx; else breath_idx = target_tone->breath_idx;
 
-            if (breath_idx != 0xFF && breath_idx != 0x7F && breath_idx < hd->breath_scripts.size()) {
-                v.vibrato.depth = ch.modulation / 127.0f;
-                v.vibrato.init(hd->breath_scripts[breath_idx]);
-                v.vibrato_enabled = v.vibrato.active;
+            const float max_vibrato_depth_semitones = 0.5f; // modest depth
+            float depth_norm = ch.modulation / 127.0f;
+            v.vibrato.depth = depth_norm * max_vibrato_depth_semitones;
 
-                if (v.vibrato_enabled) {
-                    v.target_pitch_mult *= std::pow(2.0, -0.2 / 12.0);
-                    float rate_factor = (ch.breath_rate > 0 ? ch.breath_rate : 64) / 127.0f;
-                    double target_hz = 2.0 + (rate_factor * 20.0);
-                    v.vibrato_rate_val = (double)hd->breath_scripts[breath_idx].size() * target_hz / 44100.0;
-                }
+            const std::vector<u8>* depth_wave = nullptr;
+            if (breath_idx != 0xFF && breath_idx != 0x7F && breath_idx < hd->breath_scripts.size()) {
+                depth_wave = &hd->breath_scripts[breath_idx];
+            }
+
+            v.vibrato.init({}, depth_wave ? *depth_wave : std::vector<u8>{}, 0, 0);
+            v.vibrato_enabled = v.vibrato.active && v.vibrato.depth > 0.0f;
+
+            if (v.vibrato_enabled) {
+                float rate_factor = (ch.breath_rate > 0 ? ch.breath_rate : 64) / 127.0f;
+                double target_hz = 0.5 + (rate_factor * 9.5);
+
+                size_t wave_size = v.vibrato.lfo_table.empty() ? 256 : v.vibrato.lfo_table.size();
+                size_t depth_size = v.vibrato.depth_table.empty() ? wave_size : v.vibrato.depth_table.size();
+                v.vibrato_rate_val = (double)wave_size * target_hz / 44100.0;
+                v.vibrato_depth_rate_val = (double)depth_size * target_hz / 44100.0;
             }
         }
 
@@ -527,6 +571,7 @@ void SPU::program_change(int ch_idx, int prog_id) { channels[ch_idx].prog = prog
 void SPU::pitch_bend(int ch_idx, int val) {
     double mult = channels[ch_idx].pitch_mult;
     channels[ch_idx].pitch_bend_factor = std::pow(2.0, (((val - 64) / 64.0) * mult) / 12.0);
+    
 }
 
 void SPU::control_change(int ch_idx, int cc, int val) {
@@ -578,7 +623,8 @@ void SPU::render(int num_samples, std::vector<float>& dl, std::vector<float>& dr
 
             float vibrato_pitch_offset = 0.0f;
             if (v.vibrato_enabled) {
-                v.vibrato.tick(v.vibrato_rate_val);
+                double depth_step = v.vibrato_depth_rate_val > 0.0 ? v.vibrato_depth_rate_val : v.vibrato_rate_val;
+                v.vibrato.tick(v.vibrato_rate_val, depth_step);
                 vibrato_pitch_offset = v.vibrato.get_pitch_offset();
             }
 
@@ -630,10 +676,7 @@ void SPU::render(int num_samples, std::vector<float>& dl, std::vector<float>& dr
     }
 }
 
-// =============================================================
 // SEQUENCERS (SQ & MIDI)
-// =============================================================
-
 std::pair<int, size_t> read_varlen(const std::vector<u8>& data, size_t cursor) {
     int value = 0;
     while (cursor < data.size()) {
@@ -652,6 +695,19 @@ void write_varlen(std::vector<u8>& buf, uint32_t value) {
     }
     while (true) {
         buf.push_back(buffer & 0xFF);
+        if (buffer & 0x80) buffer >>= 8;
+        else break;
+    }
+}
+
+void write_varlen_fp(FILE* fp, uint32_t value) {
+    uint32_t buffer = value & 0x7F;
+    while ((value >>= 7)) {
+        buffer <<= 8;
+        buffer |= ((value & 0x7F) | 0x80);
+    }
+    while (true) {
+        fputc(buffer & 0xFF, fp);
         if (buffer & 0x80) buffer >>= 8;
         else break;
     }
@@ -707,26 +763,175 @@ void SQParser::parse_events() {
 }
 
 bool SQParser::saveToMidi(const std::string& filename) {
-    if (events.empty()) return false;
-    std::ofstream out(filename, std::ios::binary);
-    if (!out.is_open()) return false;
-    out.write("MThd", 4); u32 head = __builtin_bswap32(6); out.write((char*)&head, 4);
-    u16 fmt = 0; out.write((char*)&fmt, 2); u16 trks = __builtin_bswap16(1); out.write((char*)&trks, 2);
-    u16 div = __builtin_bswap16(ticks_per_quarter); out.write((char*)&div, 2);
-    out.write("MTrk", 4); std::vector<u8> track;
-    for(const auto& ev : events) {
-        write_varlen(track, ev.delta);
-        if(ev.type=="note") { track.push_back(ev.cmd|ev.ch); track.push_back(ev.note); track.push_back(ev.vel); }
-        else if(ev.type=="cc") { track.push_back(ev.cmd|ev.ch); track.push_back(ev.cc_val); track.push_back(ev.val); }
-        else if(ev.type=="prog" || ev.type=="pitch") { track.push_back(ev.cmd|ev.ch); track.push_back(ev.val); }
-        else if(ev.type=="tempo") {
-            track.push_back(0xFF); track.push_back(0x51); track.push_back(3);
-            int mpqn = 60000000 / (ev.val > 0 ? ev.val : 120);
-            track.push_back((mpqn>>16)&0xFF); track.push_back((mpqn>>8)&0xFF); track.push_back(mpqn&0xFF);
-        } else if(ev.type=="loop_end") { track.push_back(0xFF); track.push_back(0x2F); track.push_back(0); }
+    if (data.size() < 0x110) return false;
+    
+    FILE* fp = fopen(filename.c_str(), "wb");
+    if (!fp) return false;
+    
+    // Write MThd header
+    fputc(0x4D, fp); fputc(0x54, fp); fputc(0x68, fp); fputc(0x64, fp); // "MThd"
+    fputc(0x00, fp); fputc(0x00, fp); fputc(0x00, fp); fputc(0x06, fp); // Header size = 6
+    fputc(0x00, fp); fputc(0x00, fp); // Format 0
+    fputc(0x00, fp); fputc(0x01, fp); // 1 track
+    fputc(data[3], fp); fputc(data[2], fp); // Delta time (division)
+    
+    // Write MTrk header
+    fputc(0x4D, fp); fputc(0x54, fp); fputc(0x72, fp); fputc(0x6B, fp); // "MTrk"
+    
+    // Track size placeholder (will fill in later)
+    long trackSizePos = ftell(fp);
+    fputc(0x00, fp); fputc(0x00, fp); fputc(0x00, fp); fputc(0x00, fp);
+    
+    // Initial tempo event
+    fputc(0x04, fp);
+    fputc(0xFF, fp);
+    fputc(0x51, fp);
+    fputc(0x03, fp);
+    int tempo = data[4];
+    int val = tempo > 0 ? (60000000 / tempo) : 500000;
+    fputc((val >> 16) & 0xFF, fp);
+    fputc((val >> 8) & 0xFF, fp);
+    fputc(val & 0xFF, fp);
+    
+    // Time signature
+    fputc(0x08, fp);
+    fputc(0xFF, fp);
+    fputc(0x58, fp);
+    fputc(0x04, fp);
+    fputc(0x04, fp);
+    fputc(0x02, fp);
+    fputc(0x18, fp);
+    fputc(0x08, fp);
+
+    // Write data, SQ format is almost identical to MIDI, main difference is pitch bend (1 byte vs 2 bytes)
+    fputc(0x00, fp);
+    
+    size_t cursor = 0x110;
+    u8 runningStatus = 0;
+    
+    while (cursor < data.size()) {
+        // Delta
+        while (cursor < data.size()) {
+            u8 byte = data[cursor++];
+            fputc(byte, fp);
+            if (!(byte & 0x80)) break;
+        }
+        
+        if (cursor >= data.size()) break;
+        
+        u8 currentByte = data[cursor];
+        bool useRunningStatus = false;
+        u8 statusByte;
+        
+        if (currentByte >= 0x80 && currentByte <= 0xEF) {
+            statusByte = currentByte;
+            runningStatus = statusByte;
+            cursor++;
+            fputc(statusByte, fp);
+        } else if (currentByte >= 0xF0) {
+            statusByte = currentByte;
+            runningStatus = 0;
+            cursor++;
+            fputc(statusByte, fp);
+        } else {
+            statusByte = runningStatus;
+            useRunningStatus = true;
+        }
+        
+        u8 cmd = statusByte & 0xF0;
+
+        switch (cmd) {
+            case 0x80:  // Note Off
+            case 0x90:  // Note On
+            case 0xA0:  // Aftertouch
+            case 0xB0:  // Control Change
+                // 2 data bytes
+                fputc(data[cursor++], fp);
+                fputc(data[cursor++], fp);
+                break;
+                
+            case 0xC0:  // Program Change
+            case 0xD0:  // Channel Pressure
+                // 1 data byte
+                fputc(data[cursor++], fp);
+                break;
+                
+            case 0xE0: { // Pitch Bend - SQ uses 1 byte (0-127, center=64), MIDI needs 2 bytes (14-bit, center=8192)
+                u8 sqValue = data[cursor++];
+                int midiValue = (sqValue * 16383) / 127;
+                u8 lsb = midiValue & 0x7F;
+                u8 msb = (midiValue >> 7) & 0x7F;
+                fputc(lsb, fp);
+                fputc(msb, fp);
+                break;
+            }
+                
+            case 0xF0: { // System/Meta
+                if (statusByte == 0xFF) {
+                    // Meta event
+                    u8 metaType = data[cursor++];
+                    fputc(metaType, fp);
+                    
+                    if (metaType == 0x2F) {
+                        // End of track
+                        u8 len = data[cursor++];
+                        fputc(len, fp);
+                        goto end_track;
+                    } else if (metaType == 0x51) {
+                        // Tempo - convert from BPM to microseconds per quarter
+                        u8 len = data[cursor++];
+                        fputc(0x03, fp);  // Always 3 bytes for tempo
+                        if (len == 1 && cursor < data.size()) {
+                            u8 bpm = data[cursor++];
+                            int tempoval = bpm > 0 ? (60000000 / bpm) : 500000;
+                            fputc((tempoval >> 16) & 0xFF, fp);
+                            fputc((tempoval >> 8) & 0xFF, fp);
+                            fputc(tempoval & 0xFF, fp);
+                            cursor++;  // Skip the extra byte
+                        } else {
+                            // Already in correct format, copy as-is
+                            for (int i = 0; i < len && cursor < data.size(); i++) {
+                                fputc(data[cursor++], fp);
+                            }
+                        }
+                    } else {
+                        // Other meta events
+                        u8 len = data[cursor++];
+                        fputc(len, fp);
+                        for (int i = 0; i < len && cursor < data.size(); i++) {
+                            fputc(data[cursor++], fp);
+                        }
+                    }
+                } else if (statusByte == 0xF0 || statusByte == 0xF7) {
+                    // SysEx - copy length and data
+                    auto res = read_varlen(data, cursor);
+                    int len = res.first;
+                    cursor = res.second;
+                    write_varlen_fp(fp, len);
+                    for (int i = 0; i < len && cursor < data.size(); i++) {
+                        fputc(data[cursor++], fp);
+                    }
+                }
+                break;
+            }
+                
+            default:
+                break;
+        }
     }
-    if(events.back().type != "loop_end") { write_varlen(track, 0); track.push_back(0xFF); track.push_back(0x2F); track.push_back(0); }
-    u32 len = __builtin_bswap32(track.size()); out.write((char*)&len, 4); out.write((char*)track.data(), track.size());
+    
+end_track:
+    // write track size
+    long endPos = ftell(fp);
+    u32 trackSize = endPos - trackSizePos - 4;
+    
+    fseek(fp, trackSizePos, SEEK_SET);
+    fputc((trackSize >> 24) & 0xFF, fp);
+    fputc((trackSize >> 16) & 0xFF, fp);
+    fputc((trackSize >> 8) & 0xFF, fp);
+    fputc(trackSize & 0xFF, fp);
+    
+    fclose(fp);
     return true;
 }
 
@@ -767,7 +972,14 @@ void MidiParser::parse_midi() {
                 else if(e.cmd == 0x80) { e.type="note"; e.note=data[cursor++]; e.vel=0; cursor++; }
                 else if(e.cmd == 0xB0) { e.type="cc"; e.cc_val=data[cursor++]; e.val=data[cursor++]; }
                 else if(e.cmd == 0xC0) { e.type="prog"; e.val=data[cursor++]; }
-                else if(e.cmd == 0xE0) { cursor++; e.type="pitch"; e.val=data[cursor++]; } else cursor++;
+                else if(e.cmd == 0xE0) { 
+                    // MIDI pitch bend is 14-bit (LSB + MSB), convert to 0-127 range for internal use
+                    u8 lsb = data[cursor++]; 
+                    u8 msb = data[cursor++]; 
+                    int midiValue = lsb | (msb << 7);
+                    e.type="pitch"; 
+                    e.val = (midiValue * 127) / 16383;  // Convert back to 0-127 range
+                } else cursor++;
                 all.push_back({cur_time, e});
             }
         }
@@ -778,9 +990,7 @@ void MidiParser::parse_midi() {
     events.push_back({0, "loop_end", 0,0,0,0});
 }
 
-// =============================================================
-// WAV EXPORT IMPLEMENTATION
-// =============================================================
+
 
 struct WavHeader {
     char riff[4] = {'R','I','F','F'};

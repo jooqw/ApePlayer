@@ -50,6 +50,7 @@ private slots:
     void onCloseFile();
     void onExportSf2();
     void onBulkExport();
+    void onSeq2Midi();
 
     void onPlayClicked();
     void onStopClicked();
