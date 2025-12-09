@@ -374,7 +374,7 @@ void MainWindow::onTableSelectionChanged() {
     auto raw = m_bd->get_adpcm_block(t.bd_offset);
     if (!raw.empty()) {
         auto dec = EngineUtils::decode_adpcm(raw);
-        m_waveform->setData(dec.pcm);
+        m_waveform->setData(dec.pcm, dec.looping, dec.loop_start, dec.loop_end);
 
         ui->chkLoop->blockSignals(true);
         ui->chkLoop->setChecked(dec.looping);
@@ -425,7 +425,9 @@ void MainWindow::stopAudio() {
     if(m_source) { m_source->close(); delete m_source; m_source = nullptr; }
 }
 void MainWindow::onStopClicked() { stopAudio(); }
-void MainWindow::onLoopToggled(bool c) { }
+void MainWindow::onLoopToggled(bool c) {
+    if (m_source) m_source->setLoopEnabled(c);
+}
 void MainWindow::onCloseFile() { stopAudio(); m_hd->clear(); m_bd->data.clear(); fillTable(); resetUi(); log("Closed."); ui->statusbar->showMessage("Closed."); }
 void MainWindow::resetUi() { ui->le_offset->clear(); ui->le_adsr->clear(); ui->le_vol->clear(); m_waveform->clear(); }
 

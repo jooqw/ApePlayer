@@ -787,7 +787,7 @@ bool SQParser::saveToMidi(const std::string& filename) {
     fputc(0xFF, fp);
     fputc(0x51, fp);
     fputc(0x03, fp);
-    int tempo = data[4];
+    u16 tempo = Util::readU16(data, 4);
     int val = tempo > 0 ? (60000000 / tempo) : 500000;
     fputc((val >> 16) & 0xFF, fp);
     fputc((val >> 8) & 0xFF, fp);
@@ -887,7 +887,6 @@ bool SQParser::saveToMidi(const std::string& filename) {
                             fputc((tempoval >> 16) & 0xFF, fp);
                             fputc((tempoval >> 8) & 0xFF, fp);
                             fputc(tempoval & 0xFF, fp);
-                            cursor++;  // Skip the extra byte
                         } else {
                             // Already in correct format, copy as-is
                             for (int i = 0; i < len && cursor < data.size(); i++) {

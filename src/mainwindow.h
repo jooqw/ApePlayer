@@ -30,6 +30,8 @@ public:
         m_le = (qint64)end * 2;
     }
 
+    void setLoopEnabled(bool loop) { m_loop = loop; }
+
 private:
     QByteArray m_buffer;
     qint64 m_pos;

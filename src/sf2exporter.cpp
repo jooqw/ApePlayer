@@ -6,6 +6,7 @@
 #include <map>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 using namespace sf2cute;
 
@@ -102,11 +103,12 @@ bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
                 // Pan (Use forcedPan if provided, else calculate)
                 int panVal;
                 if (forcedPan != -1) {
-                    panVal = forcedPan; // Expected -500 to 500
+                    panVal = forcedPan;
                 } else {
                     int p = ((int)t.pan + (int)prog->master_pan - 64);
                     panVal = (Util::clamp_pan(p) - 64) * 10;
                 }
+                panVal = std::clamp(panVal, -500, 500);
                 zone.SetGenerator(SFGeneratorItem(SFGenerator::kPan, panVal));
 
                 // Reverb
