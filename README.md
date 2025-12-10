@@ -8,6 +8,7 @@ Ape Escape .BD/HD to SF2 and wav converter
 - WAV and SF2 exporter
 
 ## TODO list:
+- Figure out sssq CCs
 - Improve Vibrato
 - Investigate files that aren't playing correcly (Mostly .seq files)
 - Maybe allow for reverb tables? 
