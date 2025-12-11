@@ -746,7 +746,7 @@ void SQParser::parse_events() {
         if (byte >= 0x80) { status = byte; cursor++; if (status < 0xF0) running_status = status; } else status = running_status;
         int cmd = status & 0xF0; int ch = status & 0x0F;
         if (cmd == 0x80 || cmd == 0x90) { int note = data[cursor++]; int vel = data[cursor++]; events.push_back({delta, "note", cmd, ch, note, vel}); }
-        else if (cmd == 0xB0) { int cc = data[cursor++]; int val = data[cursor++]; events.push_back({delta, "cc", cmd, ch, 0, 0, cc, val}); }
+        else if (cmd == 0xB0) { int cc = data[cursor++]; int val = data[cursor++]; events.push_back({delta, "cc", cmd, ch, 0, 0, val, cc}); }
         else if (cmd == 0xC0) { int val = data[cursor++]; events.push_back({delta, "prog", cmd, ch, 0, 0, val}); }
         else if (cmd == 0xE0) { int val = data[cursor++]; events.push_back({delta, "pitch", cmd, ch, 0, 0, val}); }
         else if (cmd == 0xF0) {
