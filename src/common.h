@@ -6,6 +6,7 @@
 #include <cmath>
 #include <string>
 #include <memory>
+#include <utility>
 
 using u8 = uint8_t;
 using s8 = int8_t;
@@ -96,6 +97,16 @@ namespace Util {
     inline s8 readS8(const std::vector<u8>& data, size_t offset) {
         if (offset + 1 > data.size()) return 0;
         return (s8)data[offset];
+    }
+    
+    inline std::pair<int, size_t> read_varlen(const std::vector<u8>& data, size_t cursor) {
+        int value = 0;
+        while (cursor < data.size()) {
+            u8 byte = data[cursor++];
+            value = (value << 7) | (byte & 0x7F);
+            if (!(byte & 0x80)) break;
+        }
+        return {value, cursor};
     }
 }
 

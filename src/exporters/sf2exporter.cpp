@@ -1,5 +1,8 @@
 #include "sf2exporter.h"
-#include "engine.h"
+#include "../engine/audio.h"
+#include "../engine/adsr.h"
+#include "../format/hd.h"
+#include "../format/bd.h"
 #include <sf2cute.hpp>
 #include <QDebug>
 #include <fstream>
@@ -119,13 +122,13 @@ bool Sf2Exporter::exportToSf2(const QString& path, HDParser* hd, BDParser* bd) {
                 // ADSR (Hardware Simulation)
                 u32 reg = ((u32)t.adsr2 << 16) | t.adsr1;
 
-                int16_t att = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Attack);
+                int16_t att = HardwareADSR::calculate_timecents(reg, HardwareADSR::Phase::Attack);
                 zone.SetGenerator(SFGeneratorItem(SFGenerator::kAttackVolEnv, att));
 
-                int16_t dec = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Decay);
+                int16_t dec = HardwareADSR::calculate_timecents(reg, HardwareADSR::Phase::Decay);
                 zone.SetGenerator(SFGeneratorItem(SFGenerator::kDecayVolEnv, dec));
 
-                int16_t rel = EngineUtils::calculate_adsr_timecents(reg, HardwareADSR::Phase::Release);
+                int16_t rel = HardwareADSR::calculate_timecents(reg, HardwareADSR::Phase::Release);
                 zone.SetGenerator(SFGeneratorItem(SFGenerator::kReleaseVolEnv, rel));
 
                 // Sustain Level (Convert 0-15 to attenuation)
